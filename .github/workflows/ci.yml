@@ -1,0 +1,52 @@
+name: Alpaca Project CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # --- FASE 1: CONTROLLO AIRFLOW ---
+      - name: Install Airflow & Linter
+        run: |
+          pip install flake8 apache-airflow alpaca-py pandas s3fs
+
+      - name: Lint DAGs (Controllo errori di sintassi Python)
+        run: |
+          # Ferma la build se ci sono errori di sintassi macroscopici o import falliti
+          flake8 ./airflow/dags --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # --- FASE 2: CONTROLLO E VALIDAZIONE dbt ---
+      - name: Install dbt
+        run: |
+          pip install dbt-postgres
+
+      - name: Setup Mock Profile per dbt
+        run: |
+          # dbt richiede un profilo valido per poter compilare e testare la sintassi.
+          # Creiamo un profilo finto (mock) temporaneo per l'ambiente di CI.
+          mkdir -p ~/.dbt
+          echo "dbt_project: {outputs: {dev: {type: postgres, host: localhost, user: user, pass: pass, port: 5432, dbname: db, schema: public}}, target: dev}" > ~/.dbt/profiles.yml
+
+      - name: dbt Compile
+        run: |
+          cd dbt_project
+          dbt compile
+
+      - name: dbt Parse & Test Validation
+        run: |
+          cd dbt_project
+          # Verifica che la struttura del file schema.yml e i relativi test siano validi
+          dbt parse
