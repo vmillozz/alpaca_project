@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Env
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Data (IMPORTANTISSIMO per te)
+data/
+# ECCEZIONE: NON ignorare quella dentro helios
+!helios/data/
+*.csv
+
+# OS
+.DS_Store
+Thumbs.db
+logs/
+state.json

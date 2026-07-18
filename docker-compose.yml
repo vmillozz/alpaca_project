@@ -1,0 +1,162 @@
+services:
+
+  # ===========================================================================
+  # DATABASE — PostgreSQL 16
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: alpaca-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: de_user
+      POSTGRES_PASSWORD: de_password
+      POSTGRES_DB: alpaca_warehouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_alpaca_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U de_user -d alpaca_warehouse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alpaca-network
+
+  # ===========================================================================
+  # STORAGE — MinIO
+  # UI:  http://localhost:9001  →  minio_admin / minio_password
+  # ===========================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: alpaca-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: minio_password
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_alpaca_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alpaca-network
+
+  # ===========================================================================
+  # PROCESSING — Spark 3.5.1
+  # FIX: bitnami/spark non è più pubblico → apache/spark ufficiale
+  # FIX: SPARK_MODE non esiste nell'immagine ufficiale → command esplicito
+  # Master UI: http://localhost:8080
+  # ===========================================================================
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: alpaca-spark-master
+    restart: unless-stopped
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - alpaca-network
+
+  spark-worker:
+    image: apache/spark:3.5.1
+    container_name: alpaca-spark-worker
+    restart: unless-stopped
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://alpaca-spark-master:7077
+    networks:
+      - alpaca-network
+
+  # ===========================================================================
+  # ORCHESTRATION — Apache Airflow 2.10.5
+  # UI: http://localhost:8081
+  # FIX: comando airflow è "standalone" non "apache-airflow standalone"
+  # FIX: user: root causa problemi con apt — pip funziona, ma meglio evitare
+  # FIX: le API key vanno in un .env file, non hardcoded nel compose
+  # ===========================================================================
+  airflow:
+    image: apache/airflow:2.10.5-python3.11
+    container_name: alpaca-airflow
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://de_user:de_password@postgres:5432/alpaca_warehouse
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__LOGGING__LOGGING_LEVEL=INFO
+      - AIRFLOW__WEBSERVER__SECRET_KEY=change_me_in_production
+      - ALPACA_API_KEY=${ALPACA_API_KEY}        # letto da .env
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}  # letto da .env
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    # FIX: comando corretto è "airflow standalone", non "apache-airflow standalone"
+    command: >-
+      bash -c "pip install --no-cache-dir alpaca-py pandas s3fs && airflow standalone"
+    networks:
+      - alpaca-network
+
+  # ===========================================================================
+  # ANALYSIS & ML — Jupyter + dbt + ML libs
+  # UI: http://localhost:8888  →  token: trading
+  # FIX: immagine su quay.io (Docker Hub non aggiornato dal 2023)
+  # FIX: start-notebook.py (start-notebook.sh rinominato nelle versioni recenti)
+  # FIX: pyspark aggiunto per usare il cluster Spark
+  # ===========================================================================
+  jupyter-ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.jupyter-alpaca
+    container_name: alpaca-jupyter-ml
+    restart: unless-stopped
+    depends_on:
+      - spark-master
+      - postgres
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_TOKEN=trading
+      - SPARK_MASTER=spark://alpaca-spark-master:7077
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - AWS_ACCESS_KEY_ID=minio_admin
+      - AWS_SECRET_ACCESS_KEY=minio_password
+      - AWS_ENDPOINT_URL=http://minio:9000
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./dbt_project:/home/jovyan/dbt_project
+    networks:
+      - alpaca-network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  postgres_alpaca_data:
+  minio_alpaca_data:
+  airflow_logs:
+
+# =============================================================================
+# NETWORK
+# =============================================================================
+networks:
+  alpaca-network:
+    driver: bridge
