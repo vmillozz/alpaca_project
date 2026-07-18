@@ -22,7 +22,8 @@ def download_eod_to_minio():
         symbol_or_symbols=assets,
         timeframe=TimeFrame.Day,
         start=datetime.now() - timedelta(days=365),
-        end=datetime.now()
+        end=datetime.now(),
+        feed="iex"
     )
     
     bars = client.get_stock_bars(request_params)

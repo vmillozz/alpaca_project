@@ -24,3 +24,5 @@ data/
 Thumbs.db
 logs/
 state.json
+postgres_alpaca_data/
+minio_alpaca_data/

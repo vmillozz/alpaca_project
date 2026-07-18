@@ -103,6 +103,11 @@ services:
       - AIRFLOW__WEBSERVER__SECRET_KEY=change_me_in_production
       - ALPACA_API_KEY=${ALPACA_API_KEY}        # letto da .env
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}  # letto da .env
+      # ---------------------------------------------------------------------
+      # CREDENZIALI WEB UI ESPLICITE
+      # ---------------------------------------------------------------------
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
     ports:
       - "8081:8080"
     volumes:
