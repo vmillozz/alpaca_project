@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: public
+    database: alpaca_warehouse
+    schema: public
+    tables:
+      - name: ai_trading_signals
+        description: "Tabella grezza contenente i segnali predittivi generati dal modello di Machine Learning."
+        columns:
+          - name: predicted_signal
+            description: "Segnale binario generato dall'AI. Deve essere 0 (Ribasso) o 1 (Rialzo)."
+            tests:
+              - not_null
+              - accepted_values:
+                  values: [0, 1]
+
+models:
+  - name: mart_trading_actions
+    description: "Tabella finale di classificazione delle azioni di trading basate sulle predizioni dell'AI."
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+      - name: trading_action
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BUY - AI Prevede Rialzo', 'HOLD / SELL - AI Prevede Ribasso']
