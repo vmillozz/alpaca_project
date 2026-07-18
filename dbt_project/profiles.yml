@@ -1,0 +1,13 @@
+# Sostituisci 'alpaca_profile' con il nome che hai trovato nel dbt_project.yml
+alpaca_profile:
+  outputs:
+    dev:
+      type: postgres
+      host: postgres          # Nome del servizio nel tuo Docker Compose
+      port: 5432
+      user: de_user           # Il tuo username di Postgres
+      password: de_password   # La tua password di Postgres
+      dbname: alpaca_warehouse # Il tuo database
+      schema: public          # Lo schema target (es. public, o analytics)
+      threads: 4
+  target: dev
